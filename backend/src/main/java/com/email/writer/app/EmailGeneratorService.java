@@ -11,42 +11,41 @@ import java.util.Map;
 @Service
 public class EmailGeneratorService {
 
-    private  final WebClient webClient;
+    private final WebClient webClient;// WebClient is used to make HTTP requests in a reactive way.
     @Value("${gemini.api.url}")
     private String geminiApiUrl;
     @Value("${gemini.api.key}")
     private String geminiApiKey;
 
-    public EmailGeneratorService(WebClient.Builder webClientBuilder){
+    public EmailGeneratorService(WebClient.Builder webClientBuilder) {
         this.webClient = webClientBuilder.build();
     }
-    public String generateEmailReply(EmailRequest emailRequest){
-        //Building the prompt
+
+    public String generateEmailReply(EmailRequest emailRequest) {
+        // Building the prompt
         String prompt = buildPrompt(emailRequest);
 
-        //Crafting the request
+        // Crafting the request
         Map<String, Object> requestBody = Map.of(
-                "contents", new Object[]{
-                        Map.of("parts", new Object[]{
-                            Map.of("text", prompt)
-                })
-                }
-        );
-        //Sending the request to Gemini API and getting the response
+                "contents", new Object[] {
+                        Map.of("parts", new Object[] {
+                                Map.of("text", prompt)
+                        })
+                });
+        // Sending the request to Gemini API and getting the response
         String response = webClient.post()
-                //.uri(geminiApiUrl + geminiApiKey)
                 .uri(geminiApiUrl)
                 .header("Content-Type", "application/json")
                 .bodyValue(requestBody)
                 .retrieve()
                 .bodyToMono(String.class)
                 .block();
-        //Extracting and Returning the response
+        // Extracting and Returning the response
         return extractResponseContent(response);
     }
 
     private String extractResponseContent(String response) {
-        try{
+        try {
             ObjectMapper mapper = new ObjectMapper();
             JsonNode rootNode = mapper.readTree(response);
             return rootNode.path("candidates")
@@ -57,17 +56,40 @@ public class EmailGeneratorService {
                     .path("text")
                     .asText();
 
-
-        }
-        catch(Exception e){
+        } catch (Exception e) {
             return "Error processing request: " + e.getMessage();
         }
     }
 
+    @PostMapping("/generateFromPrompt")
+    public ResponseEntity<String> generateFromPrompt(@RequestBody Map<String, String> body) {
+        String prompt = body.get("prompt");
+        String response = emailGeneratorService.generateFromPrompt(prompt);
+        return ResponseEntity.ok(response);
+    }
+
+    public String generateFromPrompt(String prompt) {
+        Map<String, Object> requestBody = Map.of(
+                "contents", new Object[] {
+                        Map.of("parts", new Object[] {
+                                Map.of("text", prompt)
+                        })
+                });
+        String response = webClient.post()
+                .uri(geminiApiUrl)
+                .header("Content-Type", "application/json")
+                .bodyValue(requestBody)
+                .retrieve()
+                .bodyToMono(String.class)
+                .block();
+        return extractResponseContent(response);
+    }
+
     private String buildPrompt(EmailRequest emailRequest) {
         StringBuilder prompt = new StringBuilder();
-        prompt.append("Generate a professional email reply for the following email content. Please don't generate a subject line ");
-        if(emailRequest.getTone() != null && !emailRequest.getTone().isEmpty()){
+        prompt.append(
+                "Generate a professional email reply for the following email content. Please don't generate a subject line ");
+        if (emailRequest.getTone() != null && !emailRequest.getTone().isEmpty()) {
             prompt.append("Use a  ").append(emailRequest.getTone()).append(" tone.");
         }
         prompt.append("\nOriginal email: \n").append(emailRequest.getEmailContent());
